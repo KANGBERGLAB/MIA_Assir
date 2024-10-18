@@ -1,1 +1,106 @@
+# Load required packages or install them if missing
+required_packages <- c("tximeta", "DESeq2", "org.Hs.eg.db")
+for (pkg in required_packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg, dependencies = TRUE)
+    library(pkg, character.only = TRUE)
+  }
+}
 
+#' RNA-seq Analysis Pipeline for MIA Data
+#'
+#' This script processes Salmon quant files, loads metadata, and runs DESeq2 analysis.
+#' It produces gene-level differential expression results for different cell types.
+#'
+#' @param base_dir The base directory containing the Salmon quantification files.
+#' @param metadata_path Path to the metadata CSV file.
+#' @param output_dir Directory to save the DEG results.
+#' @return Saves DEG results as CSV files in the specified output directory.
+run_rnaseq_analysis <- function(base_dir, metadata_path, output_dir) {
+  
+  # Define the base directory path and construct file paths for Salmon quant files
+  sample_ids <- paste0("S", 1:12, "_transcripts_quant")
+  quant_files <- file.path(base_dir, sample_ids, "quant.sf")
+  
+  # Check if the Salmon quant files exist
+  if (!all(file.exists(quant_files))) {
+    stop("Some quant.sf files are missing in the directory: ", base_dir)
+  }
+
+  # Load metadata
+  metadata <- read.csv(metadata_path, header = TRUE)
+  metadata$donor <- as.factor(metadata$donor)
+  
+  # Ensure required metadata columns exist
+  if (!all(c("folder_name", "condition", "cell", "donor") %in% colnames(metadata))) {
+    stop("The metadata file is missing required columns.")
+  }
+  
+  # Prepare coldata for tximeta
+  coldata <- data.frame(
+    files = quant_files, 
+    names = metadata$folder_name, 
+    condition = metadata$condition, 
+    cell = metadata$cell, 
+    donor = metadata$donor, 
+    stringsAsFactors = FALSE
+  )
+  
+  # Run tximeta
+  se <- tximeta(coldata)
+  
+  # Add exons and summarize to gene level
+  se.exons <- addExons(se)
+  gse <- summarizeToGene(se)
+  
+  # Map gene symbols using org.Hs.eg.db
+  ens <- rownames(gse)
+  symbols <- mapIds(org.Hs.eg.db, keys = ens, column = "SYMBOL", keytype = "ENSEMBL")
+  rownames(gse) <- symbols[match(rownames(gse), names(symbols))]
+  gse <- gse[!is.na(rownames(gse)), ]
+  
+  # Split by cell type (NSC and Bulk)
+  gse_nsc <- gse[, gse$cell == "NSC"]
+  gse_bulk <- gse[, gse$cell == "Bulk"]
+  
+  # Differential expression analysis using DESeq2
+  dds_nsc <- DESeqDataSet(gse_nsc, design = ~ condition + donor)
+  dds_bulk <- DESeqDataSet(gse_bulk, design = ~ condition + donor)
+
+  # Filter out low-count genes
+  dds_nsc <- dds_nsc[rowSums(counts(dds_nsc)) > 1, ]
+  dds_bulk <- dds_bulk[rowSums(counts(dds_bulk)) > 1, ]
+  
+  # Run DESeq2 analysis
+  dds_nsc <- DESeq(dds_nsc)
+  dds_bulk <- DESeq(dds_bulk)
+  
+  # Extract results for NSC and Bulk (contrasting IL17A vs Veh)
+  res_nsc <- results(dds_nsc, contrast = c("condition", "IL17A", "Veh"))
+  res_bulk <- results(dds_bulk, contrast = c("condition", "IL17A", "Veh"))
+  
+  # Sort and convert to data frame for NSC
+  resOrdered_nsc <- res_nsc[order(res_nsc$pvalue), ]
+  resOrderedDF_nsc <- as.data.frame(resOrdered_nsc)
+  
+  # Sort and convert to data frame for Bulk
+  resOrdered_bulk <- res_bulk[order(res_bulk$pvalue), ]
+  resOrderedDF_bulk <- as.data.frame(resOrdered_bulk)
+  
+  # Ensure the output directory exists
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+  
+  # Save DESeq2 results as CSV files
+  write.csv(resOrderedDF_nsc, file = file.path(output_dir, "DEG_MIA_nsc_results.csv"), row.names = FALSE)
+  write.csv(resOrderedDF_bulk, file = file.path(output_dir, "DEG_MIA_bulk_results.csv"), row.names = FALSE)
+  
+  message("Differential expression analysis completed. Results saved in: ", output_dir)
+}
+
+# Example usage
+# base_dir <- "/R/MIA_salmon_quant"
+# metadata_path <- "/R/metadata.csv"
+# output_dir <- "/R/output"
+# run_rnaseq_analysis(base_dir, metadata_path, output_dir)
