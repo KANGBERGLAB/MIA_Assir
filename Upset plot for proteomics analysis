@@ -1,0 +1,77 @@
+# ===================================================
+# Required Libraries
+# ===================================================
+# Install missing libraries if needed by uncommenting:
+# install.packages(c("dplyr", "ggpubr", "ComplexHeatmap", "wesanderson"))
+
+library(dplyr)
+library(ggpubr)
+library(ComplexHeatmap)
+library(wesanderson)
+
+# ===================================================
+# Data Import and Preprocessing
+# ===================================================
+# Set directory (use relative paths or parameterize to make portable)
+dir <- "path/to/data/folder" # Replace with correct relative path
+
+# Load data from CSV file
+data <- read.csv(file.path(dir, "MIA_prot_all_upset.csv"), header = TRUE)
+
+# Convert to data frame and set row names as 'Gene'
+data2 <- as.data.frame(data[2:7], row.names = data$Gene)
+
+# Rename columns for better readability
+colnames(data2)[colnames(data2) == "CHAPS_up"] <- "CHAPS up"
+colnames(data2)[colnames(data2) == "CHAPS_down"] <- "CHAPS down"
+colnames(data2)[colnames(data2) == "sECM_up"] <- "sECM up"
+colnames(data2)[colnames(data2) == "sECM_down"] <- "sECM down"
+colnames(data2)[colnames(data2) == "iECM_up"] <- "iECM up"
+colnames(data2)[colnames(data2) == "iECM_down"] <- "iECM down"
+
+# ===================================================
+# Create Combination Matrix for UpSet Plot
+# ===================================================
+set.seed(123)  # Ensure reproducibility
+m <- make_comb_mat(data2)
+
+# ===================================================
+# Define Color Palette for Plot
+# ===================================================
+# Display available palettes from wesanderson package
+names(wes_palettes)
+
+# Choose a color palette for the plot
+values <- wes_palette(n = 3, name = "Darjeeling1")
+
+# ===================================================
+# Generate UpSet Plot
+# ===================================================
+# Create and save the UpSet plot as a high-resolution TIFF image
+tiff("upset_plot2.tiff", width = 3, height = 6, res = 360, units = "in")
+
+# Plot the UpSet with custom settings for set order, point size, line width, and annotations
+UpSet(
+  t(m),
+  set_order = c(
+    "CHAPS up", "sECM up", "iECM up",
+    "CHAPS down", "sECM down", "iECM down"
+  ),
+  pt_size = unit(5, "mm"),        # Set point size
+  lwd = 3,                        # Line width for intersections
+  comb_col = values[comb_degree(m)],  # Custom color for combination columns based on degree
+  top_annotation = upset_top_annotation(
+    t(m), add_numbers = TRUE, height = unit(5, "cm")
+  ),
+  right_annotation = upset_right_annotation(
+    t(m), add_numbers = TRUE, fontsize = 8
+  ),
+  comb_order = order(-comb_size(m))  # Order combinations by size
+)
+
+# Close the TIFF device and save the plot
+dev.off()
+
+# ===================================================
+# End of Script
+# ===================================================
