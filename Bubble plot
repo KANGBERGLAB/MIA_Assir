@@ -1,0 +1,50 @@
+# Load required libraries
+# Uncomment the following line if necessary libraries are not installed
+# install.packages(c("ggplot2", "wesanderson"))
+
+library(ggplot2)
+library(wesanderson)  # For the color palette
+
+# Subset data into two categories (up and down directions)
+data_up <- data[data$Direction == "Up", ]
+data_down <- data[data$Direction == "Down", ]
+
+# Define key plot aesthetics
+x <- data$enrichment.score   # X-axis: Enrichment score
+y <- data$term.description   # Y-axis: Term description (e.g., kinases or pathways)
+size <- data$genes.mapped    # Bubble size: Number of genes mapped
+color <- data$logPadj        # Bubble color: -log10(Adjusted P-value)
+
+# Define color palette for gradient (using wesanderson)
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# Create the bubble plot
+bubble_plot <- ggplot(data, aes(x = x, y = y, size = size, color = color)) +
+  geom_point(alpha = 0.8) +  # Adjust transparency of points
+  scale_size(range = c(5, 20), name = "Number of genes") +  # Define size range for bubbles
+  scale_color_gradientn(colours = pal, name = "-log10(Adj P)") +  # Gradient color for p-values
+  theme_clean() +  # Use a clean theme for better visualization
+  theme(
+    aspect.ratio = 1.5,  # Adjust aspect ratio for a stretched plot
+    plot.title = element_text(size = 20, face = "bold"),  # Title formatting
+    axis.title.x = element_text(size = rel(3)),  # X-axis title formatting
+    axis.title.y = element_text(size = rel(3), angle = 90),  # Y-axis title formatting
+    axis.text.x = element_text(size = rel(2.5)),  # X-axis text size
+    axis.text.y = element_text(size = rel(2.5)),  # Y-axis text size
+    legend.text = element_text(size = rel(2)),  # Legend text size
+    plot.background = element_blank(),  # Remove background color
+    axis.ticks.y = element_blank(),  # Remove Y-axis ticks
+    strip.text = element_text(size = rel(2))  # Facet label text size (if used)
+  ) +
+  labs(
+    x = "Enrichment Score",  # X-axis label
+    y = "Term Description",  # Y-axis label
+    title = "Bubble Plot of Enrichment Analysis"  # Plot title
+  ) +
+  xlim(0, 7)  # Define X-axis limits
+
+# Print the bubble plot
+print(bubble_plot)
+
+# Optionally, save the plot as an image (e.g., PNG or PDF)
+# ggsave("bubble_plot.png", plot = bubble_plot, width = 10, height = 7, dpi = 300)
