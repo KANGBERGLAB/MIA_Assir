@@ -1,0 +1,94 @@
+# Load necessary libraries
+# Install any missing libraries by uncommenting the following lines
+# install.packages(c("tidyverse", "limma", "dplyr", "QFeatures", "plotly", "gridExtra", "SummarizedExperiment", "ggplot2", "DescTools", "imputeLCMD"))
+
+library(tidyverse)
+library(limma)
+library(dplyr)
+library(QFeatures)
+library(plotly)
+library(gridExtra)
+library(SummarizedExperiment)
+library(ggplot2)
+library(DescTools)
+library(imputeLCMD)
+
+# Set working directory (adjust to your local or remote environment)
+dir <- "//uoa/global/Research Projects/SMMSN/ABN-Neurodevlab-RG16227-10/Data/Muhammad/Maternal_Inflamation/Proteomics"
+
+# Read the data
+data <- read.csv(file.path(dir, "MIA_proteins_matrisome_anno_genes.csv"), header = TRUE)
+
+# Convert data to a dataframe, using Gene_symbol as row names
+data <- as.data.frame(data, row.names = data$Gene_symbol)
+
+# Select only the protein quantification columns (adjust indices as per your data)
+crosstab <- data %>% select(86:103)
+
+# Rename columns for easier interpretation (adjust column names based on actual sample names)
+colnames(crosstab)[1:18] <- c("CHAPS_IL17A_355", "CHAPS_IL17A_362", "CHAPS_IL17A_363", 
+                              "iECM_IL17A_355", "iECM_IL17A_362", "iECM_IL17A_363", 
+                              "sECM_IL17A_355", "sECM_IL17A_362", "sECM_IL17A_363", 
+                              "CHAPS_Veh_355", "CHAPS_Veh_362", "CHAPS_Veh_363", 
+                              "iECM_Veh_355", "iECM_Veh_362", "iECM_Veh_363", 
+                              "sECM_Veh_355", "sECM_Veh_362", "sECM_Veh_363")
+
+# Read metadata files
+metadata_fra <- read.csv(file.path(dir, "metadata_chaps.csv"), header = TRUE)
+
+# Subset data for each fraction
+CHAPS <- crosstab %>% select(1:3, 10:12)
+iECM <- crosstab %>% select(4:6, 13:15)
+sECM <- crosstab %>% select(7:9, 16:18)
+
+# Remove rows with >= 5 NA values, keeping proteins with at least 2 valid measurements
+CHAPS_fil <- CHAPS[rowSums(is.na(CHAPS)) < (ncol(CHAPS) - 1), ]
+iECM_fil <- iECM[rowSums(is.na(iECM)) < (ncol(iECM) - 1), ]
+sECM_fil <- sECM[rowSums(is.na(sECM)) < (ncol(sECM) - 1), ]
+
+# Log2 transformation of the filtered data
+CHAPS_log <- log2(CHAPS_fil)
+iECM_log <- log2(iECM_fil)
+sECM_log <- log2(sECM_fil)
+
+# Plot density of log-transformed iECM data
+limma::plotDensities(iECM_log)
+
+# Normalize the data using median-centered robust scaling
+CHAPS_norm <- as.data.frame(RobScale(CHAPS_log, center = TRUE, scale = TRUE))
+iECM_norm <- as.data.frame(RobScale(iECM_log, center = TRUE, scale = TRUE))
+sECM_norm <- as.data.frame(RobScale(sECM_log, center = TRUE, scale = TRUE))
+
+# Impute missing data using minimal value distribution
+CHAPS_imp <- impute.MinProb(CHAPS_norm, q = 0.01)
+iECM_imp <- impute.MinProb(iECM_norm, q = 0.01)
+sECM_imp <- impute.MinProb(sECM_norm, q = 0.01)
+
+# Plot MDS for the imputed sECM data
+limma::plotMDS(sECM_imp)
+
+# Factorize 'Donor' column in metadata
+metadata_fra$Donor <- as.factor(metadata_fra$Donor)
+
+# Create SummarizedExperiment object
+se <- SummarizedExperiment(assays = CHAPS_imp, colData = metadata_fra)
+
+# Filter data based on group (IL17A, Veh), then adjust group and donor factors
+se$Group <- factor(se$Group)
+se$Donor <- factor(se$Donor)
+se$Group <- relevel(se$Group, ref = "Veh")
+
+# Design matrix for linear modeling
+design <- model.matrix(~ se$Group + se$Donor)
+
+# Fit linear model using limma
+fit <- lmFit(assay(se[, se$Group %in% c("IL17A", "Veh")]), design)
+fit <- eBayes(fit)
+
+# Get top table of results
+top_table <- topTable(fit)
+
+# Export the results to a CSV file
+write.fit(fit, results = NULL, file = "CHAPS_MinProb_DEP_limma_factorial_genes.csv", 
+          digits = NULL, adjust = "BH", method = "separate", 
+          F.adjust = "none", quote = FALSE, sep = ",", row.names = TRUE)
