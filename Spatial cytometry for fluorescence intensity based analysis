@@ -1,0 +1,116 @@
+# ===================================================
+# Required Libraries
+# ===================================================
+# Uncomment the following lines to install the necessary packages if needed
+# install.packages(c("dplyr", "ggpubr", "ggplot2", "fields", "MASS", "ggsci"))
+
+library(dplyr)
+library(ggpubr)
+library(ggplot2)
+library(fields)  # For interpolation (density calculation)
+library(MASS)    # For kernel density estimation (kde2d)
+library(ggsci)   # For scientific color scales (optional)
+
+# ===================================================
+# Data Import and Filtering
+# ===================================================
+# Set working directory or relative paths
+# Replace with the correct relative path or directory
+dir <- "path/to/data/folder"
+
+# Load data from CSV file
+data <- read.csv(file.path(dir, "Neurons-combined.csv"), header = TRUE)
+
+# Filter data to remove outliers based on the 'Area' column
+data <- filter(data, Area > 9, Area < 200)
+
+# ===================================================
+# Data Transformation: Convert to Short Format
+# ===================================================
+# Filter data based on 'Channel' column for specific markers (CTIP2, SATB2, NeuN)
+data2 <- filter(data, Channel %in% c("CTIP2"))
+data_SATB2 <- filter(data, Channel %in% c("SATB2"))
+data_NeuN <- filter(data, Channel %in% c("NeuN"))
+
+# Combine data into one data frame with specific marker columns (CTIP2, SATB2, NeuN)
+data2$CTIP2 <- data2$Mean
+data2$SATB2 <- data_SATB2$Mean
+data2$NeuN <- data_NeuN$Mean
+
+# Save the transformed data to a CSV file
+write.csv(data2, file.path(dir, "349-Veh-BR3-wide.csv"))
+
+# ===================================================
+# Principal Component Analysis (PCA) and Density Estimation
+# ===================================================
+# Use 'd' for easier handling of the dataset
+d <- data
+
+# Convert 'Group' column to a factor and set levels for plotting
+d$Group <- factor(d$Group, levels = c("Veh", "IL17A"))
+
+# Assign columns for CTIP2, SATB2, and NeuN expression
+d$c <- d$CTIP2
+d$a <- d$SATB2
+d$b <- d$NeuN
+
+# Compute the first principal component (PC1) based on SATB2 and NeuN expressions
+d$pc <- predict(prcomp(~a + b, d))[, 1]
+
+# Add bivariate density estimation for each point using 2D kernel density estimation
+d$density <- fields::interp.surface(
+  MASS::kde2d(d$a, d$b), d[, c("a", "b")]
+)
+
+# ===================================================
+# Plot: SATB2 vs. NeuN with PC1 Color and Density-based Transparency
+# ===================================================
+# Plot the data with PC1 color and density-based transparency
+ggplot(d, aes(a, b, color = pc, alpha = 1 / density)) +
+  geom_point(shape = 16, size = 3, show.legend = FALSE) +
+  theme_classic2() + 
+  theme(
+    aspect.ratio = 1,
+    axis.title.y = element_text(size = rel(2), angle = 90),
+    axis.title.x = element_text(size = rel(1.5), angle = 0),
+    axis.text.x = element_text(size = rel(2), angle = 90),
+    legend.text = element_text(size = rel(1), angle = 0),
+    axis.text.y = element_text(size = rel(2), angle = 0),
+    strip.text = element_text(size = rel(2))
+  ) +
+  labs(x = "SATB2 MFI", y = "NeuN MFI") +
+  geom_hline(yintercept = 20, linetype = "dashed", color = "grey") + 
+  geom_vline(xintercept = 20, linetype = "dashed", color = "grey") + 
+  scale_color_gradient(low = "#0091ff", high = "#f0650e") +
+  scale_alpha(range = c(.05, .25)) +
+  facet_wrap(~Group)
+
+# Save the plot as a high-quality SVG image for publication
+ggsave("SATB2_NeuN_MFI_3donors_20.svg", path = dir, width = 12, height = 12, units = "in")
+
+# ===================================================
+# Plot: SATB2 vs. NeuN with Group-based Color
+# ===================================================
+# Generate a simpler scatter plot with color based on 'Group' and fixed transparency
+ggplot(d, aes(a, b, color = Group, alpha = 0.1)) +
+  geom_point(shape = 16, size = 1, show.legend = FALSE) +
+  theme_classic2() + 
+  theme(
+    aspect.ratio = 1,
+    axis.title.y = element_text(size = rel(2), angle = 90),
+    axis.title.x = element_text(size = rel(1.5), angle = 0),
+    axis.text.x = element_text(size = rel(2), angle = 90),
+    legend.text = element_text(size = rel(1), angle = 0),
+    axis.text.y = element_text(size = rel(2), angle = 0),
+    strip.text = element_text(size = rel(2))
+  ) +
+  labs(x = "SATB2 MFI", y = "NeuN MFI") +
+  geom_hline(yintercept = 40, linetype = "dashed", color = "grey") + 
+  geom_vline(xintercept = 40, linetype = "dashed", color = "grey") + 
+  scale_color_aaas() +  # Use AAAS color palette from 'ggsci' package
+  scale_alpha(range = c(.05, .25)) +
+  facet_wrap(~Donor)
+
+# ===================================================
+# End of Script
+# ===================================================
