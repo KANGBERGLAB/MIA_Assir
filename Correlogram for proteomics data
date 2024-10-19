@@ -1,0 +1,97 @@
+# ===================================================
+# Required Libraries
+# ===================================================
+# Install missing libraries if needed by uncommenting:
+# install.packages(c("tidyverse", "limma", "dplyr", "QFeatures", 
+#                    "plotly", "gridExtra", "SummarizedExperiment", 
+#                    "ggplot2", "DescTools", "imputeLCMD", "corrplot"))
+
+library(tidyverse)
+library(limma)
+library(dplyr)
+library(QFeatures)
+library(plotly)
+library(gridExtra)
+library(SummarizedExperiment)
+library(ggplot2)
+library(DescTools)
+library(imputeLCMD)
+library(corrplot)
+
+# ===================================================
+# Data Import
+# ===================================================
+# Set directory (use relative paths or parameterize to make portable)
+dir <- "path/to/data/folder" # Replace with correct relative path
+
+# Read proteomics data
+data <- read.csv(file.path(dir, "MIA_proteins_matrisome_anno_genes.csv"), header = TRUE)
+
+# Convert to data frame using 'X' column as row names (adjust as needed for your data)
+data <- as.data.frame(data, row.names = data$X)
+
+# ===================================================
+# Data Preprocessing: Select relevant columns
+# ===================================================
+# Select protein quantification columns and relevant metadata
+crosstab <- data %>%
+  select(c(3:5, 7, 8, 10, 86:103))
+
+# Filter rows: Keep rows with valid values in at least 2 samples per condition
+crosstab_fil <- crosstab[rowSums(is.na(crosstab[7:24])) < (length(crosstab[7:24]) - 1), ]
+
+# Log2 transformation of protein quantification columns
+crosstab_fil[, 7:24] <- log2(crosstab_fil[, 7:24])
+
+# Median-centered normalization using RobScale
+crosstab_fil[, 7:24] <- as.data.frame(RobScale(crosstab_fil[, 7:24], center = TRUE, scale = TRUE))
+
+# Impute missing data using the minimal value Gaussian distribution (q = 0.01)
+crosstab_fil[, 7:24] <- impute.MinProb(crosstab_fil[, 7:24], q = 0.01)
+
+# ===================================================
+# Renaming Columns
+# ===================================================
+# Rename columns for clarity and easier interpretation
+colnames(crosstab_fil)[1:24] <- c("AA", "MW(kDa)", "pI", "Peptides", "Unique peptides", 
+                                  "Coverage(%)", "CHAPS_IL17A_1", "CHAPS_IL17A_2", "CHAPS_IL17A_3", 
+                                  "iECM_IL17A_1", "iECM_IL17A_2", "iECM_IL17A_3", "sECM_IL17A_1", 
+                                  "sECM_IL17A_2", "sECM_IL17A_3", "CHAPS_Veh_1", "CHAPS_Veh_2", 
+                                  "CHAPS_Veh_3", "iECM_Veh_1", "iECM_Veh_2", "iECM_Veh_3", 
+                                  "sECM_Veh_1", "sECM_Veh_2", "sECM_Veh_3")
+
+# ===================================================
+# Correlation Matrix and Plot
+# ===================================================
+# Calculate the correlation matrix for the filtered dataset
+correl_matrix <- cor(crosstab_fil[, 7:24])
+
+# Test for significance of the correlations
+testRes <- cor.mtest(correl_matrix, conf.level = 0.95)
+
+# Set random seed for reproducibility in the plot
+set.seed(123)
+
+# Create correlation plot
+corrplot(
+  correl_matrix,
+  method = 'color',         # Use color to represent correlations
+  type = 'lower',           # Only show lower triangle
+  tl.col = 'black',         # Text label color
+  tl.cex = 0.8,             # Text label size
+  cl.ratio = 0.1,           # Color legend size
+  tl.srt = 45,              # Rotate text labels for clarity
+  p.mat = testRes$p,        # p-values matrix for significance testing
+  sig.level = 0.05,         # Significance level
+  pch.cex = 0.9,            # Size of significance asterisks
+  insig = 'label_sig',      # Mark insignificant correlations with asterisks
+  pch.col = 'grey20',       # Color for insignificance symbols
+  col = COL2('BrBG', 50)    # Color palette
+)
+
+# If you want to save the plot, uncomment and modify the following:
+# ggsave(filename = "Proteome_correlation_plot.png", width = 7, height = 7, dpi = 300)
+
+# ===================================================
+# End of Script
+# ===================================================
