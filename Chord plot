@@ -1,0 +1,61 @@
+# Load required libraries
+# Uncomment the following line if necessary libraries are not installed
+# install.packages(c("circlize", "randomcoloR"))
+
+library(circlize)  # For creating chord diagrams
+library(randomcoloR)  # For generating random colors
+
+# Convert data frame 'df' to a matrix for chord diagram creation
+# We use 'Annotated.Gene' column as row names
+df <- as.data.frame(df, row.names = df$Annotated.Gene)  # Ensure df is a data frame with row names
+mat <- as.matrix(df[2:8])  # Convert a subset of the data frame to a matrix
+
+# Basic chord diagram
+# Customize the gap between sectors (big.gap parameter)
+chordDiagram(mat, big.gap = 30)
+
+# Set a random seed for reproducibility of color generation and plot arrangement
+set.seed(123)
+
+# Save the output to an SVG file for high-quality vector graphics (suitable for publications)
+svg("ECM_matrisome_associated_chord.svg")
+
+# Define color schemes for the chord diagram
+# Generate random colors with some transparency
+column.col <- rand_color(35, transparency = 0.6)  # Colors for columns
+col_mat <- rand_color(length(mat), transparency = 0.5)  # Colors for matrix elements
+
+# Optional: Adjust dimensions of the color matrix to match the matrix shape (commented out in original)
+# dim(col_mat) <- dim(mat)
+
+# Circos plot customization
+# Adjust plot parameters: starting degree, clockwise direction, and gaps between sectors
+circos.par(
+  start.degree = 85,  # Start at 85 degrees (customized orientation)
+  clock.wise = FALSE  # Counter-clockwise plot arrangement
+)
+
+# Create the chord diagram with advanced settings
+chordDiagram(
+  t(mat),  # Transpose the matrix for correct orientation
+  annotationTrack = c("grid", "name"),  # Show grid and names for sectors
+  directional = -1,  # Make the chords directional (use -1 for reverse)
+  link.sort = TRUE,  # Sort links to reduce visual overlap
+  link.decreasing = TRUE,  # Sort in decreasing order
+  transparency = 0.1,  # Set transparency for the links
+  big.gap = 20,  # Adjust gap between sectors for better spacing
+  symmetric = FALSE,  # Non-symmetric diagram
+  link.largest.ontop = FALSE,  # Ensure largest links don't cover smaller ones
+  direction.type = "diffHeight",  # Display directional height difference
+  link.target.prop = TRUE,  # Proportional links to target sectors
+  annotationTrackHeight = mm_h(c(3, 2))  # Customize annotation track heights
+)
+
+# Clear the Circos plot environment to reset for future plots
+circos.clear()
+
+# Close the SVG device, saving the file to disk
+dev.off()
+
+# Optional: Print a message to indicate successful completion (helpful for script logging)
+cat("Chord diagram saved as 'ECM_matrisome_associated_chord.svg'\n")
